@@ -1,152 +1,219 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mobil Quiz V1.3</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quiz App</title>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 10px; font-size: 16px; }
-    h1 { font-size: 22px; }
-    button, select, input[type=number] { font-size: 16px; padding: 8px; margin: 5px 0; width: 100%; }
-    label.option-label { display: block; padding: 6px 0; }
-    #quizContainer { margin-top: 20px; }
-    #wrongList a { display: block; color: red; text-decoration: underline; }
-    #wrongList { margin-top: 10px; background-color: #ffe5e5; padding: 10px; display: none; }
+    body { font-family: Arial, sans-serif; background: white; padding: 20px; font-size: 12px; }
+    .question-box { margin-top: 20px; }
+    button, label { margin: 5px; }
+    #results { margin-top: 20px; font-weight: bold; }
+    #startQuiz { margin-top: 10px; }
+    .option-label { display: block; margin: 4px 0; }
+    #quizControls { margin-bottom: 30px; }
+    #wrongList { margin-top: 10px; padding: 10px; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: none; }
+    #wrongList a { display: block; color: #721c24; cursor: pointer; text-decoration: underline; }
+    #question { white-space: normal; word-break: break-word; max-width: 100%; overflow-wrap: break-word; line-height: 1.6; }
+    #quizTitle { margin-top: 20px; }
   </style>
 </head>
 <body>
-<h1>Mobil Quiz V1.3</h1>
-<input type="file" id="upload" accept=".xlsx,.xls" /><br><br>
-<div id="quizConfig" style="display:none">
-  <label>Soru Sayısı:<select id="questionCount"></select></label>
-  <label>Kaçıncı sorudan başlasın: <input type="number" id="startFrom" value="1" min="1" /></label>
-  <label>Sıralama:
+  <h1 id="quizTitle">Quiz</h1>
+  <input type="file" id="upload" accept=".xlsx,.xls" onchange="handleFile(event)" />
+
+  <div id="quizConfig" style="display:none">
+    <label for="questionCount">Soru Sayısı:</label>
+    <select id="questionCount">
+      <option value="10">10</option>
+      <option value="20">20</option>
+      <option value="30">30</option>
+      <option value="40">40</option>
+      <option value="50">50</option>
+      <option value="60">60</option>
+      <option value="70">70</option>
+      <option value="80">80</option>
+      <option value="90">90</option>
+      <option value="100">100</option>
+      <option value="200">200</option>
+      <option value="300">300</option>
+      <option value="400">400</option>
+      <option value="500">500</option>
+      <option value="All">All</option>
+    </select>
+    <br>
+    <label for="startFrom">Kaçıncı sorudan başlasın:</label>
+    <input type="number" id="startFrom" value="1" min="1" />
+    <br>
+    <label for="orderType">Sıralama:</label>
     <select id="orderType">
       <option value="random">Karışık</option>
-      <option value="sequential">Sıralı</option>
+      <option value="sequential">Sırasıyla</option>
     </select>
-  </label>
-  <button onclick="startQuiz()">Sınavı Başlat</button>
-</div>
-<div id="quizContainer" style="display:none">
-  <div id="question"></div>
-  <div id="options"></div>
-  <button onclick="prevQuestion()">Previous</button>
-  <button onclick="nextQuestion()">Next</button>
-  <button onclick="showAnswer()">Show Answer</button>
-</div>
-<div id="results"></div>
-<div id="wrongList"></div>
-<script>
-  let allQuestions = [];
-  let currentQuestionIndex = 0;
-  let correctAnswers = [];
-  let wrongAnswers = [];
-  let questions = [];
+    <br>
+    <button id="startQuiz" onclick="startQuiz()">Sınavı Başlat</button>
+  </div>
 
-  document.getElementById('upload').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      const data = new Uint8Array(evt.target.result);
-      const workbook = XLSX.read(data, {type: 'array'});
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      allQuestions = rows.slice(1).map((row, index) => ({
-        index: index + 1,
-        question: row[0],
-        options: row.slice(1, 7).filter(x => x),
-        correct: row[7] ? row[7].toString().toUpperCase().split(',') : []
-      }));
+  <div id="quizControls">
+    <button onclick="prevQuestion()">Previous</button>
+    <button onclick="nextQuestion()">Next</button>
+    <button onclick="showAnswer()">Show Answer</button>
+  </div>
 
-      let countSel = document.getElementById('questionCount');
-      countSel.innerHTML = '';
-      [10, 20, 30, 50, 100, 'All'].forEach(val => {
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.text = val;
-        countSel.appendChild(opt);
+  <div id="quizContainer" style="display:none">
+    <div class="question-box">
+      <div id="question"></div>
+      <div id="options"></div>
+    </div>
+  </div>
+
+  <div id="results"></div>
+  <div id="wrongList"></div>
+
+  <script>
+    let questions = [];
+    let allQuestions = [];
+    let currentQuestionIndex = 0;
+    let correctAnswers = 0;
+    let wrongAnswers = 0;
+    let answered = [];
+    let wrongIndexes = [];
+    let correctSet = new Set();
+
+    function handleFile(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        allQuestions = rows.slice(1).map((row, index) => ({
+          index: index + 1,
+          question: row[0],
+          options: row.slice(1, 7),
+          correct: row[7] ? row[7].toString().trim().toUpperCase().split(',') : []
+        }));
+        document.getElementById('quizConfig').style.display = 'block';
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function startQuiz() {
+      document.getElementById('quizContainer').style.display = 'block';
+      document.getElementById('results').textContent = '';
+      document.getElementById('wrongList').style.display = 'none';
+      document.getElementById('wrongList').innerHTML = '';
+
+      answered = [];
+      wrongIndexes = [];
+      correctAnswers = 0;
+      wrongAnswers = 0;
+
+      const count = document.getElementById('questionCount').value;
+      const order = document.getElementById('orderType').value;
+
+      let pool = allQuestions.filter(q => !correctSet.has(q.index));
+
+      if (order === 'random') {
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
+        questions = count === 'All' ? shuffled : shuffled.slice(0, parseInt(count));
+      } else {
+        const startFrom = parseInt(document.getElementById('startFrom').value) - 1;
+        let selected = pool.slice(startFrom);
+        if (count !== 'All') selected = selected.slice(0, parseInt(count));
+        questions = selected;
+      }
+
+      if (questions.length === 0) {
+        document.getElementById('results').textContent = "Tüm sorulardan test oldunuz.";
+        return;
+      }
+
+      questions = questions.map((q, i) => ({ ...q, displayIndex: i + 1 }));
+      currentQuestionIndex = 0;
+      renderQuestion();
+    }
+
+    function renderQuestion() {
+      const q = questions[currentQuestionIndex];
+      document.getElementById('question').textContent = `${q.displayIndex}. ${q.question}`;
+      document.getElementById('options').innerHTML = '';
+
+      q.options.forEach((opt, i) => {
+        if (!opt) return;
+        const label = document.createElement('label');
+        label.className = 'option-label';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.name = 'option';
+        checkbox.value = String.fromCharCode(65 + i);
+        checkbox.onclick = function () {
+          const max = q.correct.length;
+          const allChecked = document.querySelectorAll('input[name=option]:checked');
+          if (allChecked.length > max) {
+            this.checked = false;
+          }
+        };
+        label.appendChild(checkbox);
+        label.append(` ${String.fromCharCode(65 + i)}. ${opt}`);
+        document.getElementById('options').appendChild(label);
       });
-      document.getElementById('quizConfig').style.display = 'block';
-    };
-    reader.readAsArrayBuffer(file);
-  });
-
-  function startQuiz() {
-    document.getElementById('results').textContent = '';
-    document.getElementById('wrongList').innerHTML = '';
-    document.getElementById('wrongList').style.display = 'none';
-
-    const order = document.getElementById('orderType').value;
-    const count = document.getElementById('questionCount').value;
-    const start = parseInt(document.getElementById('startFrom').value);
-
-    let pool = [...allQuestions];
-    if (order === 'random') pool.sort(() => Math.random() - 0.5);
-    if (count !== 'All') pool = pool.slice(0, parseInt(count));
-    questions = pool.map((q, i) => ({...q, displayIndex: i + 1 }));
-    currentQuestionIndex = 0;
-    correctAnswers = [];
-    wrongAnswers = [];
-
-    document.getElementById('quizContainer').style.display = 'block';
-    renderQuestion();
-  }
-
-  function renderQuestion() {
-    const q = questions[currentQuestionIndex];
-    document.getElementById('question').innerHTML = `${q.displayIndex}. ${q.question}`;
-    const optionsDiv = document.getElementById('options');
-    optionsDiv.innerHTML = '';
-    q.options.forEach((opt, i) => {
-      const label = document.createElement('label');
-      label.className = 'option-label';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = String.fromCharCode(65 + i);
-      cb.onclick = function() {
-        const checked = optionsDiv.querySelectorAll('input:checked');
-        if (checked.length > q.correct.length) this.checked = false;
-      }
-      label.appendChild(cb);
-      label.append(` ${String.fromCharCode(65 + i)}. ${opt}`);
-      optionsDiv.appendChild(label);
-    });
-  }
-
-  function nextQuestion() {
-    const selected = Array.from(document.querySelectorAll('#options input:checked')).map(cb => cb.value);
-    const q = questions[currentQuestionIndex];
-    if (selected.sort().join(',') === q.correct.sort().join(',')) {
-      correctAnswers.push(q);
-    } else {
-      wrongAnswers.push(q);
     }
-    currentQuestionIndex++;
-    if (currentQuestionIndex < questions.length) {
-      renderQuestion();
-    } else {
+
+    function prevQuestion() {
+      if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+        renderQuestion();
+      }
+    }
+
+    function nextQuestion() {
+      const q = questions[currentQuestionIndex];
+      const selected = Array.from(document.querySelectorAll('input[name=option]:checked')).map(input => input.value);
+      const isCorrect = selected.sort().join(',') === q.correct.sort().join(',');
+
+      answered.push(currentQuestionIndex);
+      if (isCorrect) {
+        correctAnswers++;
+        correctSet.add(q.index);
+      } else {
+        wrongAnswers++;
+        wrongIndexes.push(q.index);
+      }
+
+      currentQuestionIndex++;
+      if (currentQuestionIndex < questions.length) {
+        renderQuestion();
+      } else {
+        showResults();
+      }
+    }
+
+    function showResults() {
       document.getElementById('quizContainer').style.display = 'none';
-      document.getElementById('results').textContent = `Test tamamlandı. Doğru: ${correctAnswers.length}, Yanlış: ${wrongAnswers.length}`;
-      if (wrongAnswers.length > 0) {
+      document.getElementById('results').textContent = `Test tamamlandı. Doğru: ${correctAnswers}, Yanlış: ${wrongAnswers}`;
+      if (wrongIndexes.length > 0) {
+        const list = wrongIndexes.map(i => `<a onclick="jumpTo(${i})">${i}. soru</a>`).join('');
+        document.getElementById('wrongList').innerHTML = `<strong>Yanlış Sorular:</strong><br>${list}`;
         document.getElementById('wrongList').style.display = 'block';
-        document.getElementById('wrongList').innerHTML = wrongAnswers.map(q => `<a onclick="alert('Soru: ${q.question}\nCevap: ${q.correct.join(', ')}')">${q.displayIndex}. soru</a>`).join('');
       }
     }
-  }
 
-  function prevQuestion() {
-    if (currentQuestionIndex > 0) {
-      currentQuestionIndex--;
-      renderQuestion();
+    function showAnswer() {
+      const q = questions[currentQuestionIndex];
+      alert(`Correct answer(s): ${q.correct.join(', ')} (Soru No: ${q.index})`);
     }
-  }
 
-  function showAnswer() {
-    const q = questions[currentQuestionIndex];
-    alert(`Doğru Cevap(lar): ${q.correct.join(', ')}`);
-  }
-</script>
+    function jumpTo(index) {
+      const foundIndex = questions.findIndex(q => q.index === index);
+      if (foundIndex >= 0) {
+        currentQuestionIndex = foundIndex;
+        renderQuestion();
+        document.getElementById('quizContainer').style.display = 'block';
+      }
+    }
+  </script>
 </body>
 </html>
